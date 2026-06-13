@@ -38,9 +38,16 @@ module.exports = async (req, res) => {
       url: "./"
     });
     let sent = 0, removed = 0;
+    // ?force=1 (con il secret) invia subito ignorando il giorno: utile per i test.
+    const force = !!(req.query && (req.query.force === "1" || req.query.force === 1));
+    // Giorno corrente in Italia (0=domenica .. 6=sabato).
+    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" })).getDay();
     for (const doc of snap.docs) {
       const sub = doc.get("push");
       if (!sub || !sub.endpoint) continue;
+      let day = doc.get("pushDay");
+      day = (day === undefined || day === null) ? 1 : Number(day); // default lunedi; -1 = ogni giorno
+      if (!force && day !== -1 && day !== today) continue;
       try {
         await webpush.sendNotification(sub, payload);
         sent++;

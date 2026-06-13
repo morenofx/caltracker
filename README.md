@@ -72,9 +72,9 @@ Note utili:
 
 ## Notifiche push: promemoria pesata (opzionale)
 
-Manda una notifica di sistema **il lunedi' mattina** ("Pesati!"), anche ad app chiusa. Su iPhone funziona solo con l'app **aggiunta alla schermata Home** (iOS 16.4+) e dopo aver dato il **permesso notifiche**.
+Manda una notifica di sistema al mattino (~6:00) **nel giorno che scegli dall'app** ("Pesati!"), anche ad app chiusa. Su iPhone funziona solo con l'app **aggiunta alla schermata Home** (iOS 16.4+) e dopo aver dato il **permesso notifiche**.
 
-Come funziona: un *cron* di Vercel (`vercel.json`) chiama ogni lunedi' `api/notify.js`, che legge le iscrizioni push salvate su Firestore e le invia con la libreria `web-push`. Per leggere Firestore lato server serve una **chiave service account** di Firebase.
+Come funziona: un *cron* di Vercel (`vercel.json`) chiama **ogni mattina** `api/notify.js`, che legge le iscrizioni push da Firestore e invia la notifica **solo a chi ha scelto quel giorno** (impostato nell'app). Per leggere Firestore lato server serve una **chiave service account** di Firebase.
 
 Configurazione (una volta sola):
 
@@ -87,11 +87,11 @@ Configurazione (una volta sola):
    - `FIREBASE_SERVICE_ACCOUNT` → il JSON del service account (la stringa base64 del punto 1, oppure il JSON intero).
    - `CRON_SECRET` → una stringa casuale a tua scelta (protegge l'endpoint del cron).
 3. **Redeploy.** Avendo aggiunto `package.json`, Vercel installera' `firebase-admin` e `web-push` (la prima volta il deploy ci mette un po' di piu').
-4. Sul telefono: apri l'app **dalla schermata Home**, fai login, poi **Dati → Promemoria pesata → Attiva promemoria** e concedi il permesso.
+4. Sul telefono: apri l'app **dalla schermata Home**, fai login, poi **Dati → Promemoria pesata**: scegli il **giorno**, tocca **Attiva promemoria** e concedi il permesso.
 
 Note:
-- **Orario:** il cron e' impostato in `vercel.json` (`0 6 * * 1` = lunedi' 06:00 **UTC**, ~08:00 in Italia). L'ora e' in UTC e, sul piano gratuito Vercel, e' **approssimativa** (parte nell'arco dell'ora). Per cambiarla, modifica `schedule`.
-- **Test subito** (senza aspettare lunedi'): chiama l'endpoint a mano con il secret, es. `curl -H "Authorization: Bearer IL_TUO_CRON_SECRET" https://TUO-DOMINIO.vercel.app/api/notify` — deve rispondere `{"ok":true,"sent":1,...}` dopo che hai attivato il promemoria sul telefono.
+- **Quando arriva:** il cron gira **una volta al giorno** (`vercel.json`, `0 4 * * *` = 04:00 UTC ≈ **06:00 in Italia**) e invia solo nel **giorno scelto** nell'app. L'ora del cron e' in UTC (in inverno cade ~05:00 italiane per l'ora legale) e sul piano gratuito Vercel e' **approssimativa** (parte nell'arco dell'ora). Il **giorno** si cambia dall'app; per cambiare l'**ora** modifica `schedule` (es. `0 17 * * *` ≈ 19:00 estive).
+- **Test subito** (ignorando il giorno): `curl -H "Authorization: Bearer IL_TUO_CRON_SECRET" "https://TUO-DOMINIO.vercel.app/api/notify?force=1"` — deve rispondere `{"ok":true,"sent":1,...}` dopo che hai attivato il promemoria sul telefono. (Senza `?force=1` invia solo se oggi e' il giorno scelto.)
 - Le chiavi VAPID si generano con `npx web-push generate-vapid-keys`. La privata e il `CRON_SECRET` **non** vanno messi nel codice/repo, solo nelle Environment Variables.
 
 ## Note

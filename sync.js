@@ -144,6 +144,8 @@
     } catch (e) { pushStat("Errore: " + ((e && e.message) || e)); }
   }
   if ($("pushBtn")) $("pushBtn").onclick = () => { $("pushBtn").dataset.on ? disablePush() : enablePush(); };
+  const pushDaySel = $("pushDay");
+  if (pushDaySel) pushDaySel.onchange = () => { if (ref) M.setDoc(ref, { pushDay: parseInt(pushDaySel.value, 10) }, { merge: true }).catch(() => {}); };
 
   let unsub = null;
   M.onAuthStateChanged(authClient, async (user) => {
@@ -159,7 +161,12 @@
       // Migrazione: se il documento cloud non esiste, lo creo dai dati locali.
       try { const snap = await M.getDoc(ref); if (!snap.exists()) await M.setDoc(ref, state()); } catch (e) {}
       // Ascolto in tempo reale (ignoro gli echi delle mie stesse scritture).
-      unsub = M.onSnapshot(ref, (s) => { if (!s.metadata.hasPendingWrites && s.exists()) applyCloud(s.data()); });
+      unsub = M.onSnapshot(ref, (s) => {
+        if (s.metadata.hasPendingWrites || !s.exists()) return;
+        const data = s.data();
+        applyCloud(data);
+        if (pushDaySel && data.pushDay !== undefined && data.pushDay !== null) pushDaySel.value = String(data.pushDay);
+      });
     } else {
       ref = null;
       showPush(false);
