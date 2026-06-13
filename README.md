@@ -8,9 +8,11 @@ La stima AI usa **Gemini**. La chiave NON sta nel codice: vive come variabile d'
 
 ```
 caltracker/
-├── index.html        ← l'app (frontend)
+├── index.html         ← l'app (frontend)
 ├── manifest.json      ← config PWA (icona, nome, colori)
 ├── sw.js              ← service worker (l'app si apre anche offline)
+├── firebase-config.js ← config sincronizzazione cloud (opzionale, da compilare)
+├── sync.js            ← logica di sincronizzazione cloud (Firebase)
 ├── icon.svg           ← icona, sorgente vettoriale
 ├── icon-180.png       ← icona schermata Home iPhone
 ├── icon-192.png       ← icona PWA
@@ -35,10 +37,40 @@ caltracker/
 
 Google AI Studio → "Get API key". È la stessa che usi già per gli altri progetti.
 
+## Sincronizzazione cloud su tutti i dispositivi (Firebase) — opzionale
+
+Di default i dati stanno solo sul telefono. Se vuoi ritrovarli **sempre**, anche cambiando dispositivo, attiva Firebase (gratis per uso personale). L'app resta comunque **offline-first**: funziona senza rete e sincronizza appena torni online.
+
+1. Vai su **[console.firebase.google.com](https://console.firebase.google.com)** → **Aggiungi progetto** (puoi disattivare Google Analytics).
+2. Nel progetto, clicca l'icona **`</>`** (Web) per registrare un'app web: dai un nome e **copia l'oggetto `firebaseConfig`** che ti mostra.
+3. Incolla quei valori in **`firebase-config.js`** (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId).
+4. Menu **Build → Firestore Database → Crea database** (modalità *produzione*, scegli una regione es. `eur3`).
+5. Menu **Build → Authentication → Inizia → Sign-in method →** abilita **Google** (metodo principale, accesso in un tocco) e, come riserva, anche **Email/Password**.
+   - In **Authentication → Settings → Authorized domains** aggiungi il dominio della tua app su Vercel (es. `tuo-progetto.vercel.app`), altrimenti l'accesso Google dà errore "dominio non autorizzato". `localhost` di solito è già presente.
+6. In **Firestore → Regole**, incolla queste regole e premi **Pubblica** (così ogni utente vede solo i propri dati):
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+
+7. Fai deploy/aggiorna su Vercel. Apri l'app: comparirà **"Accedi per sincronizzare"** → **Continua con Google** (un tocco). Da quel momento i tuoi dati si salvano nel cloud e su un altro telefono basta accedere con lo stesso account Google per ritrovarli. In alternativa puoi usare email/password.
+
+Note utili:
+- Se lasci `firebase-config.js` vuoto, l'app ignora il cloud e resta in locale (nessun login).
+- Alla prima accesso da un dispositivo che ha già dati in locale, quei dati vengono **caricati nel cloud**; gli altri dispositivi poi li scaricano. Conviene fare il primo login dal telefono che contiene lo storico.
+- In **Dati → Account** vedi lo stato e puoi uscire. C'è anche **"Usa solo su questo telefono"** se non vuoi sincronizzare.
+
 ## Note
 
 - **Modello:** in `api/analyze.js` è impostato `gemini-2.5-flash` (multimodale, economico, adatto a testo + immagini). Se vuoi, cambia la costante `MODEL` con un modello più recente.
-- **Privacy dei dati:** quello che mangi e le pesate restano salvati **solo nel browser del tuo telefono** (localStorage). Non finiscono su Vercel né su GitHub. Le foto vengono inviate a Gemini solo al momento della stima e non vengono salvate dall'app.
+- **Privacy dei dati:** di default quello che mangi e le pesate restano **solo nel browser del tuo telefono** (localStorage), non finiscono da nessuna parte. Se attivi la **sincronizzazione cloud** (Firebase, vedi sotto) i dati vengono salvati anche nel tuo database privato su Firebase, accessibile solo con il tuo account. Le foto vengono inviate a Gemini solo al momento della stima e non vengono salvate.
 - **Protezione AI (PIN):** se imposti `APP_PIN` su Vercel, l'endpoint `/api/analyze` accetta solo richieste con quel PIN — l'app lo chiede una volta e lo ricorda. Così nessuno che scopra l'URL può consumare il tuo credito Gemini. In più, imposta un tetto di spesa/quota sul progetto Google AI Studio come rete di sicurezza.
 - **App installabile (PWA):** grazie a `manifest.json`, alle icone e a `sw.js`, una volta aggiunta alla Home l'app ha la sua icona e si apre anche **offline** (inserimento manuale, grafici e storico funzionano senza rete; solo la stima AI richiede la connessione).
 - **Prodotti rapidi personalizzabili:** i pulsanti "Aggiungi al volo" sono tuoi — tocca **Modifica** accanto al titolo per aggiungere, cambiare o eliminare i prodotti; i più usati salgono automaticamente in cima. Tocca più volte un prodotto per porzioni multiple. La tua lista finisce anche nel backup `.json`.

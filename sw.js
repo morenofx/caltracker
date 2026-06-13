@@ -2,11 +2,13 @@
 // Strategia: network-first (così gli aggiornamenti si vedono subito),
 // con fallback alla cache quando non c'e' rete. Le chiamate /api/ NON
 // vengono mai intercettate: l'AI passa sempre dalla rete.
-const CACHE = "diario-v1";
+const CACHE = "diario-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
+  "./firebase-config.js",
+  "./sync.js",
   "./icon.svg",
   "./icon-180.png",
   "./icon-192.png",
