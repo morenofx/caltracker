@@ -42,7 +42,7 @@
     if (d.settings) settings = d.settings;
     days = d.days || {};
     weights = Array.isArray(d.weights) ? d.weights : [];
-    if (Array.isArray(d.quick) && d.quick.length) quick = d.quick;
+    if (Array.isArray(d.quick)) quick = d.quick;
     _save();
     if (typeof cancelEdit === "function") cancelEdit();
     renderOggi(); renderPeso(); renderStorico(); renderChips(); syncSettingsInputs();
