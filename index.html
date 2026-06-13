@@ -16,7 +16,7 @@
   :root{
     --bg:#F0EFEA; --card:#FFFFFF; --ink:#1A2230; --muted:#6E7682;
     --line:#E4E2DA; --good:#2FA060; --over:#D1493D; --accent:#137A86;
-    --track:#E8E6DE; --soft:#F6F5F0; --radius:18px;
+    --track:#E8E6DE; --soft:#F6F5F0; --radius:18px; --focusbg:#FFFFFF;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; padding:0;}
@@ -49,7 +49,7 @@
   /* AI box */
   .aibox{background:linear-gradient(135deg,#15808d,#0f6470); border-radius:var(--radius); padding:16px; margin-top:14px; box-shadow:0 2px 8px rgba(15,100,112,.25);}
   .aibox .ttl{color:#fff; font-size:14px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:7px;}
-  .aibox input{background:rgba(255,255,255,.95); border:none;}
+  .aibox input{background:rgba(255,255,255,.95); border:none; color:#1A2230;}
   .aibtns{display:flex; gap:8px; margin-top:9px;}
   .aibtns button{flex:1; border:none; border-radius:12px; padding:12px; font-size:14px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px;}
   .aibtns .b1{background:rgba(255,255,255,.18); color:#fff;}
@@ -68,7 +68,7 @@
   @keyframes flash{0%{box-shadow:0 0 0 3px var(--accent);}100%{box-shadow:0 1px 3px rgba(0,0,0,.05);}}
   .line2{display:flex; gap:8px;}
   input,select{font-family:inherit; font-size:16px; border:1px solid var(--line); border-radius:11px; padding:11px 12px; width:100%; background:var(--soft); color:var(--ink);}
-  input:focus,select:focus{outline:none; border-color:var(--accent); background:#fff;}
+  input:focus,select:focus{outline:none; border-color:var(--accent); background:var(--focusbg); color:var(--ink);}
   .btn{border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:600; background:var(--ink); color:#fff;}
   .btn:active{opacity:.85;}
   .btn.accent{background:var(--accent);} .btn.ghost{background:var(--soft); color:var(--ink); border:1px solid var(--line);}
@@ -113,7 +113,7 @@
   :root[data-theme="dark"]{
     --bg:#15181D; --card:#1F242B; --ink:#E9EAEC; --muted:#9AA3AD;
     --line:#2C333B; --good:#3FB877; --over:#E2685C; --accent:#3AA9B8;
-    --track:#2C333B; --soft:#262C33;
+    --track:#2C333B; --soft:#262C33; --focusbg:#30363E;
   }
   :root[data-theme="dark"] .btn:not(.accent):not(.ghost){background:#39424D;}
   :root[data-theme="dark"] .preset.on{background:var(--accent); border-color:var(--accent);}
