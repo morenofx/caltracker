@@ -10,6 +10,12 @@ const PROMPT = `Sei un nutrizionista esperto. Stima i valori nutrizionali del ci
 Rispondi SOLO con il JSON richiesto, senza testo extra.`;
 
 module.exports = async (req, res) => {
+  // Estrae un numero pulito anche se Gemini risponde "105 kcal", "circa 90", "105-110", ecc.
+  const toNum = (v) => {
+    if (typeof v === "number" && isFinite(v)) return Math.round(v);
+    const m = String(v).replace(",", ".").match(/-?\d+(\.\d+)?/);
+    return m ? Math.round(parseFloat(m[0])) : 0;
+  };
   if (req.method !== "POST") {
     res.status(405).json({ error: "Metodo non consentito" });
     return;
@@ -68,14 +74,20 @@ module.exports = async (req, res) => {
     let parsed;
     try { parsed = JSON.parse(out); } catch (e) { parsed = null; }
 
-    if (!parsed || typeof parsed.kcal === "undefined") {
+    if (!parsed) {
+      res.status(200).json({ error: "Stima non riuscita", raw: out });
+      return;
+    }
+    const kcal = toNum(parsed.kcal);
+    const protein = toNum(parsed.protein);
+    if (kcal <= 0) {
       res.status(200).json({ error: "Stima non riuscita", raw: out });
       return;
     }
     res.status(200).json({
       name: parsed.name || (text || "Pasto"),
-      kcal: Math.round(parsed.kcal),
-      protein: Math.round(parsed.protein || 0)
+      kcal: kcal,
+      protein: protein
     });
   } catch (err) {
     res.status(500).json({ error: "Errore interno", detail: String(err) });

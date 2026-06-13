@@ -300,6 +300,9 @@ let settings=JSON.parse(store.get("md_settings")||"null")||{...DEFAULTS};
 let days=JSON.parse(store.get("md_days")||"{}");
 let weights=JSON.parse(store.get("md_weights")||"[]");
 let current=new Date();
+const num=v=>{const n=Number(v);return isFinite(n)?n:0;};
+["calTarget","protTarget","startW","goalW"].forEach(k=>{if(!isFinite(Number(settings[k]))||Number(settings[k])<=0)settings[k]=DEFAULTS[k];});
+if(!settings.goalDate)settings.goalDate=DEFAULTS.goalDate;
 function save(){store.set("md_settings",JSON.stringify(settings));store.set("md_days",JSON.stringify(days));store.set("md_weights",JSON.stringify(weights));}
 function key(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayKey(){return key(new Date());}
@@ -312,9 +315,9 @@ function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"
 function renderOggi(){
   document.getElementById("dayLabel").textContent=dayLabel();
   const list=entriesFor();
-  const kcal=list.reduce((s,e)=>s+(+e.kcal||0),0);
-  const prot=list.reduce((s,e)=>s+(+e.prot||0),0);
-  const remain=settings.calTarget-kcal;
+  const kcal=list.reduce((s,e)=>s+num(e.kcal),0);
+  const prot=list.reduce((s,e)=>s+num(e.prot),0);
+  const remain=num(settings.calTarget)-kcal;
   document.getElementById("remain").textContent=Math.abs(remain);
   document.getElementById("remainLbl").textContent=remain>=0?"kcal rimaste":"kcal sopra";
   document.getElementById("ringSub").textContent=kcal+" / "+settings.calTarget;
@@ -339,8 +342,8 @@ function renderChips(){const c=document.getElementById("quickChips");c.innerHTML
 /* ---- AI ---- */
 function fillForm(d){
   document.getElementById("fName").value=d.name||"";
-  document.getElementById("fKcal").value=d.kcal||"";
-  document.getElementById("fProt").value=d.protein||0;
+  const k=Math.round(num(d.kcal));document.getElementById("fKcal").value=k>0?k:"";
+  document.getElementById("fProt").value=Math.round(num(d.protein));
   const ab=document.getElementById("addbox");ab.classList.remove("flash");void ab.offsetWidth;ab.classList.add("flash");
   ab.scrollIntoView({behavior:"smooth",block:"center"});
 }
@@ -371,8 +374,8 @@ function resizeImg(file,maxDim=1024,q=0.7){return new Promise((res,rej)=>{const 
   img.onerror=rej;img.src=url;});}
 
 document.getElementById("addCustom").onclick=()=>{
-  const n=document.getElementById("fName").value.trim(),k=+document.getElementById("fKcal").value,p=+document.getElementById("fProt").value||0;
-  if(!n||!k){toast("Serve nome e kcal");return;}
+  const n=document.getElementById("fName").value.trim(),k=Math.round(num(document.getElementById("fKcal").value)),p=Math.round(num(document.getElementById("fProt").value));
+  if(!n||k<=0){toast("Serve nome e kcal");return;}
   entriesFor().push({name:n,kcal:k,prot:p});save();renderOggi();
   document.getElementById("fName").value="";document.getElementById("fKcal").value="";document.getElementById("fProt").value="";
   document.getElementById("aiText").value="";aiStat("");toast("Aggiunto");};
@@ -439,7 +442,7 @@ function renderStorico(){
   const N=currentRange, today=new Date(); today.setHours(0,0,0,0);
   const arr=[];
   for(let i=N-1;i>=0;i--){const d=new Date(today);d.setDate(d.getDate()-i);const k=key(d);const list=days[k]||[];
-    arr.push({d,kc:list.reduce((s,e)=>s+(+e.kcal||0),0),pr:list.reduce((s,e)=>s+(+e.prot||0),0),has:list.length>0});}
+    arr.push({d,kc:list.reduce((s,e)=>s+num(e.kcal),0),pr:list.reduce((s,e)=>s+num(e.prot),0),has:list.length>0});}
   const logged=arr.filter(x=>x.has);
   const avgK=logged.length?Math.round(logged.reduce((s,x)=>s+x.kc,0)/logged.length):0;
   const avgP=logged.length?Math.round(logged.reduce((s,x)=>s+x.pr,0)/logged.length):0;
