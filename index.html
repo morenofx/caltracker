@@ -322,7 +322,11 @@
       <input id="pKcal" type="number" inputmode="numeric" placeholder="kcal">
       <input id="pProt" type="number" inputmode="numeric" placeholder="proteine g">
     </div>
-    <button class="btn accent" id="pSave" style="margin-top:12px; width:100%">Salva</button>
+    <button class="btn ghost" id="pAi" style="margin-top:8px; width:100%">✨ Stima dal nome</button>
+    <button class="btn ghost" id="pCam" style="margin-top:8px; width:100%">📷 Inquadra l'etichetta</button>
+    <input id="pFile" type="file" accept="image/*" capture="environment" style="display:none">
+    <div id="pAiStat" class="note" style="min-height:16px; margin-top:6px"></div>
+    <button class="btn accent" id="pSave" style="margin-top:8px; width:100%">Salva</button>
     <button class="btn ghost" id="pDelete" style="margin-top:8px; width:100%; color:var(--over); display:none">Elimina prodotto</button>
     <button class="btn ghost" id="pCancel" style="margin-top:8px; width:100%">Annulla</button>
   </div>
@@ -414,7 +418,41 @@ function openProd(idx){prodEditIdx=idx;const isEdit=idx>=0&&idx<quick.length;
   document.getElementById("pKcal").value=isEdit?num(quick[idx].kcal):"";
   document.getElementById("pProt").value=isEdit?num(quick[idx].prot):"";
   document.getElementById("pDelete").style.display=isEdit?"block":"none";
-  document.getElementById("prodModal").classList.add("show");document.getElementById("pName").focus();}
+  pAiStat("");document.getElementById("prodModal").classList.add("show");document.getElementById("pName").focus();}
+function pAiStat(h){const e=document.getElementById("pAiStat");if(e)e.innerHTML=h;}
+let pAiBusy=false;
+async function runProductAI(payload,label){
+  if(pAiBusy)return;pAiBusy=true;
+  const b1=document.getElementById("pAi"),b2=document.getElementById("pCam");
+  b1.disabled=true;b2.disabled=true;
+  pAiStat(label);
+  try{
+    let r=await sendAI(payload);
+    if(r.status===401){const p=prompt("PIN dell'app (impostato su Vercel come APP_PIN):");if(!p){pAiStat("Serve il PIN per l'AI.");return;}store.set("md_pin",p);r=await sendAI(payload);}
+    if(r.status===401){store.set("md_pin","");pAiStat("PIN errato. Riprova.");return;}
+    const d=await r.json();
+    if(d&&typeof d.kcal!=="undefined"&&!d.error){
+      document.getElementById("pKcal").value=Math.round(num(d.kcal))||"";
+      document.getElementById("pProt").value=Math.round(num(d.protein));
+      if(d.name&&!document.getElementById("pName").value.trim())document.getElementById("pName").value=d.name;
+      pAiStat("Stima pronta — controlla e salva.");
+    }
+    else if(d.error==="API key non configurata"){pAiStat("Manca GEMINI_API_KEY su Vercel.");}
+    else{pAiStat("Non sono riuscito a stimare. Inseriscile a mano.");}
+  }catch(e){pAiStat("Errore di rete. (L'AI funziona solo con l'app online.)");}
+  finally{pAiBusy=false;b1.disabled=false;b2.disabled=false;}
+}
+function estimateProduct(){const name=document.getElementById("pName").value.trim();if(!name){pAiStat("Scrivi prima il nome del prodotto.");return;}runProductAI({text:name},"Stimo con l'AI…");}
+document.getElementById("pAi").onclick=estimateProduct;
+document.getElementById("pCam").onclick=()=>document.getElementById("pFile").click();
+document.getElementById("pFile").onchange=async(e)=>{
+  const f=e.target.files[0];if(!f)return;
+  const name=document.getElementById("pName").value.trim();
+  pAiStat("Leggo la foto…");
+  try{const b64=await resizeImg(f);runProductAI({image:b64,mimeType:"image/jpeg",text:name||undefined},"Analizzo l'etichetta…");}
+  catch(err){pAiStat("Immagine non leggibile.");}
+  e.target.value="";
+};
 function closeProd(){document.getElementById("prodModal").classList.remove("show");}
 document.getElementById("pCancel").onclick=closeProd;
 document.getElementById("prodModal").onclick=(e)=>{if(e.target.id==="prodModal")closeProd();};
