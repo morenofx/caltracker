@@ -88,7 +88,7 @@
   .wbar{height:10px; background:var(--track); border-radius:99px; margin-top:16px; overflow:hidden;}
   .wbar > i{display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--good)); border-radius:99px; transition:width .4s;}
   .wsub{font-size:13px; color:var(--muted); margin-top:9px; text-align:center;}
-  svg.spark{width:100%; height:90px; display:block; margin-top:6px;}
+  svg.spark{width:100%; height:150px; display:block; margin-top:6px;}
   .note{font-size:13px; color:var(--muted); line-height:1.5; margin-top:10px;}
   .note b{color:var(--ink);}
 
@@ -105,12 +105,28 @@
   .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
   .spin{display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
+
+  :root[data-theme="dark"]{
+    --bg:#15181D; --card:#1F242B; --ink:#E9EAEC; --muted:#9AA3AD;
+    --line:#2C333B; --good:#3FB877; --over:#E2685C; --accent:#3AA9B8;
+    --track:#2C333B; --soft:#262C33;
+  }
+  :root[data-theme="dark"] .btn:not(.accent):not(.ghost){background:#39424D;}
+  :root[data-theme="dark"] .preset.on{background:var(--accent); border-color:var(--accent);}
+  :root[data-theme="dark"] .toast{background:#39424D;}
+  :root[data-theme="dark"] nav{background:rgba(31,36,43,.92);}
+  #themeBtn{width:34px; height:34px; font-size:15px; background:var(--card); border:none; border-radius:11px; box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  #themeBtn:active{opacity:.8;}
+  .htop{display:flex; align-items:center; justify-content:space-between;}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Il mio diario</h1>
+  <div class="htop">
+    <h1>Il mio diario</h1>
+    <button id="themeBtn" aria-label="Cambia tema">🌙</button>
+  </div>
   <div class="datebar" id="datebar">
     <button class="navbtn" id="prevDay">‹</button>
     <div class="day" id="dayLabel">Oggi</div>
@@ -188,8 +204,12 @@
       <button class="btn accent" id="addWeight" style="margin-top:10px; width:100%">Salva pesata</button>
     </div>
     <div class="card" id="sparkCard" style="display:none">
-      <div class="section-title" style="margin-top:0">Andamento</div>
-      <svg class="spark" id="spark" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+      <div class="section-title" style="margin-top:0">Andamento verso l'obiettivo</div>
+      <div id="trackStatus" class="wsub" style="margin:0 0 8px; font-weight:600;"></div>
+      <svg class="spark" id="spark" viewBox="0 0 320 150" preserveAspectRatio="none"></svg>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:4px;">
+        <span id="axStart"></span><span id="axEnd"></span>
+      </div>
     </div>
     <div class="section-title">Storico pesate</div>
     <div class="entries" id="weightList"></div>
@@ -213,6 +233,8 @@
         <input id="startW" type="number" inputmode="decimal" placeholder="Peso partenza">
         <input id="goalW" type="number" inputmode="decimal" placeholder="Peso obiettivo">
       </div>
+      <label class="fld">Data obiettivo (entro quando)</label>
+      <input id="goalDate" type="date">
       <button class="btn" id="saveSettings" style="margin-top:10px; width:100%">Salva impostazioni</button>
     </div>
     <div class="card">
@@ -244,7 +266,7 @@
 const mem={};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return (k in mem)?mem[k]:null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){mem[k]=v;}}};
 const QUICK=[["Frullato sostitutivo",200,30],["3 uova",215,21],["4 uova",290,26],["Yogurt greco 0% 170g",100,18],["Petto di pollo 150g",250,46],["Pesce bianco 200g",180,38],["Salmone 150g",280,31],["Tonno naturale 120g",130,30],["Riso/pasta 80g secco",280,9],["Pane integrale 50g",120,5],["Patate 200g",160,4],["Lenticchie 200g",230,18],["Ricotta magra 100g",140,11],["Fiocchi di latte 100g",100,12],["Mandorle 15g",90,3],["Frutto medio",80,1],["Banana",110,1],["Verdura/insalata",30,2],["Olio 1 cucchiaino",45,0]];
-const DEFAULTS={calTarget:1950,protTarget:135,startW:94,goalW:80};
+const DEFAULTS={calTarget:1950,protTarget:135,startW:94,goalW:80,goalDate:"2026-10-03"};
 let settings=JSON.parse(store.get("md_settings")||"null")||{...DEFAULTS};
 let days=JSON.parse(store.get("md_days")||"{}");
 let weights=JSON.parse(store.get("md_weights")||"[]");
@@ -344,12 +366,38 @@ function renderPeso(){
     row.innerHTML=`<div class="info"><div class="nm">${w.kg} kg</div><div class="meta">${DAYS_IT[d.getDay()]} ${d.getDate()} ${MON_IT[d.getMonth()]} ${d.getFullYear()}</div></div><button class="del" data-i="${realIdx}">×</button>`;list.appendChild(row);});
   list.querySelectorAll(".del").forEach(b=>b.onclick=()=>{weights.splice(+b.dataset.i,1);save();renderPeso();});
   const card=document.getElementById("sparkCard");
-  if(sorted.length>=2){card.style.display="block";const ys=sorted.map(w=>w.kg),min=Math.min(...ys,settings.goalW),max=Math.max(...ys),W=300,H=90,pad=8;
-    const px=i=>pad+(i/(sorted.length-1))*(W-2*pad),py=v=>pad+(1-(v-min)/((max-min)||1))*(H-2*pad);
-    let d="M";sorted.forEach((w,i)=>{d+=(i?"L":"")+px(i).toFixed(1)+" "+py(w.kg).toFixed(1)+" ";});
-    const gy=py(settings.goalW).toFixed(1);
-    document.getElementById("spark").innerHTML=`<line x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}" stroke="var(--good)" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`+sorted.map((w,i)=>`<circle cx="${px(i).toFixed(1)}" cy="${py(w.kg).toFixed(1)}" r="3" fill="var(--accent)"/>`).join("");
-  }else card.style.display="none";
+  if(sorted.length>=1){
+    card.style.display="block";
+    const dms=s=>new Date(s+"T00:00").getTime();
+    const date0=dms(sorted[0].date), kg0=sorted[0].kg;
+    let goalMs=dms(settings.goalDate); if(!goalMs||goalMs<=date0) goalMs=date0+90*864e5;
+    const todayMs=dms(todayKey()), lastMs=dms(sorted[sorted.length-1].date);
+    const xMin=date0, xMax=Math.max(goalMs,lastMs,todayMs);
+    const allY=[...sorted.map(w=>w.kg),settings.goalW,kg0];
+    let yMin=Math.min(...allY), yMax=Math.max(...allY);
+    const padY=Math.max((yMax-yMin)*0.12,0.5); yMin-=padY; yMax+=padY;
+    const W=320,H=150,L=12,R=12,T=12,B=14;
+    const X=ms=>L+((ms-xMin)/((xMax-xMin)||1))*(W-L-R);
+    const Y=kg=>T+(1-(kg-yMin)/((yMax-yMin)||1))*(H-T-B);
+    const gy=Y(settings.goalW).toFixed(1);
+    const goalLine=`<line x1="${L}" y1="${gy}" x2="${W-R}" y2="${gy}" stroke="var(--good)" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/>`;
+    const traj=`<line x1="${X(date0).toFixed(1)}" y1="${Y(kg0).toFixed(1)}" x2="${X(goalMs).toFixed(1)}" y2="${gy}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4" opacity=".45"/>`;
+    const todayLine=(todayMs>xMin&&todayMs<xMax)?`<line x1="${X(todayMs).toFixed(1)}" y1="${T}" x2="${X(todayMs).toFixed(1)}" y2="${H-B}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" opacity=".35"/>`:"";
+    let d="M";sorted.forEach((w,i)=>{d+=(i?"L":"")+X(dms(w.date)).toFixed(1)+" "+Y(w.kg).toFixed(1)+" ";});
+    const line=sorted.length>=2?`<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`:"";
+    const dots=sorted.map(w=>`<circle cx="${X(dms(w.date)).toFixed(1)}" cy="${Y(w.kg).toFixed(1)}" r="3.2" fill="var(--accent)"/>`).join("");
+    document.getElementById("spark").innerHTML=goalLine+traj+todayLine+line+dots;
+    const fmt=ms=>{const x=new Date(ms);return x.getDate()+"/"+(x.getMonth()+1);};
+    document.getElementById("axStart").textContent=fmt(date0);
+    document.getElementById("axEnd").textContent="obiettivo "+settings.goalW+" kg · "+fmt(goalMs);
+    let expected = todayMs<=date0?kg0 : todayMs>=goalMs?settings.goalW : kg0+(settings.goalW-kg0)*(todayMs-date0)/(goalMs-date0);
+    const diff=now-expected, weeksLeft=(goalMs-todayMs)/(7*864e5), rate=weeksLeft>0?((now-settings.goalW)/weeksLeft):0;
+    const st=document.getElementById("trackStatus");
+    if(now<=settings.goalW){st.style.color="var(--good)";st.textContent="Obiettivo raggiunto! 🎉";}
+    else if(weeksLeft<0.1){st.style.color="var(--over)";st.textContent=`Data obiettivo superata · mancano ${(now-settings.goalW).toFixed(1)} kg`;}
+    else if(diff<=0.2){st.style.color="var(--good)";st.textContent=`In linea ✓ · servono ~${rate.toFixed(2)} kg/sett`;}
+    else{st.style.color="#C77A18";st.textContent=`Indietro di ${diff.toFixed(1)} kg · servono ~${rate.toFixed(2)} kg/sett per arrivare in tempo`;}
+  } else card.style.display="none";
 }
 document.getElementById("wDate").value=todayKey();
 document.getElementById("addWeight").onclick=()=>{const kg=+document.getElementById("wKg").value,date=document.getElementById("wDate").value||todayKey();
@@ -362,16 +410,27 @@ function syncSettingsInputs(){
   document.getElementById("protTarget").value=settings.protTarget;
   document.getElementById("startW").value=settings.startW;
   document.getElementById("goalW").value=settings.goalW;
+  document.getElementById("goalDate").value=settings.goalDate||"2026-10-03";
   document.getElementById("pSost").classList.toggle("on",settings.calTarget==1950);
   document.getElementById("pAggr").classList.toggle("on",settings.calTarget==1750);}
 document.querySelectorAll(".preset").forEach(p=>p.onclick=()=>{document.getElementById("calTarget").value=p.dataset.cal;settings.calTarget=+p.dataset.cal;syncSettingsInputs();});
-document.getElementById("saveSettings").onclick=()=>{settings.calTarget=+document.getElementById("calTarget").value||1950;settings.protTarget=+document.getElementById("protTarget").value||135;settings.startW=+document.getElementById("startW").value||94;settings.goalW=+document.getElementById("goalW").value||80;save();syncSettingsInputs();renderOggi();renderPeso();toast("Impostazioni salvate");};
+document.getElementById("saveSettings").onclick=()=>{settings.calTarget=+document.getElementById("calTarget").value||1950;settings.protTarget=+document.getElementById("protTarget").value||135;settings.startW=+document.getElementById("startW").value||94;settings.goalW=+document.getElementById("goalW").value||80;settings.goalDate=document.getElementById("goalDate").value||"2026-10-03";save();syncSettingsInputs();renderOggi();renderPeso();toast("Impostazioni salvate");};
 document.getElementById("exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({settings,days,weights},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="diario-backup-"+todayKey()+".json";a.click();toast("Backup esportato");};
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.settings)settings=d.settings;if(d.days)days=d.days;if(d.weights)weights=d.weights;save();syncSettingsInputs();renderOggi();renderPeso();toast("Backup importato");}catch(err){toast("File non valido");}};r.readAsText(f);};
 document.getElementById("resetBtn").onclick=()=>{if(confirm("Cancellare tutti i dati? Non si può annullare.")){settings={...DEFAULTS};days={};weights=[];save();syncSettingsInputs();renderOggi();renderPeso();toast("Dati cancellati");}};
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));t.classList.add("active");document.getElementById("view-"+t.dataset.tab).classList.add("active");document.getElementById("datebar").style.display=t.dataset.tab==="oggi"?"flex":"none";document.querySelector("header h1").textContent={oggi:"Il mio diario",peso:"Peso",dati:"Impostazioni"}[t.dataset.tab];});
+
+/* ---- theme ---- */
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme", t==="dark"?"dark":"light");
+  document.getElementById("themeBtn").textContent = t==="dark" ? "☀️" : "🌙";
+  const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content", t==="dark"?"#15181D":"#F0EFEA");
+}
+let theme = store.get("md_theme") || ((window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light");
+applyTheme(theme);
+document.getElementById("themeBtn").onclick=()=>{ theme = theme==="dark"?"light":"dark"; store.set("md_theme",theme); applyTheme(theme); };
 
 renderChips();renderOggi();renderPeso();syncSettingsInputs();
 </script>
