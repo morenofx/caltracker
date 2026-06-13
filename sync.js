@@ -107,6 +107,44 @@
   // Completa un eventuale accesso Google avvenuto via redirect (mobile/PWA).
   M.getRedirectResult(authClient).catch((e) => setErr(friendly(e)));
 
+  // ---- Notifiche push (promemoria pesata) ----
+  const pushCard = $("pushCard");
+  const showPush = (v) => { if (pushCard) pushCard.style.display = v ? "block" : "none"; };
+  const pushStat = (m) => { const e = $("pushStat"); if (e) e.textContent = m; };
+  const setPushBtn = (on) => { const b = $("pushBtn"); if (b) { b.textContent = on ? "Disattiva promemoria" : "Attiva promemoria"; b.dataset.on = on ? "1" : ""; } };
+  const urlB64ToU8 = (b64) => { const pad = "=".repeat((4 - b64.length % 4) % 4); const s = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/"); const raw = atob(s); const out = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; };
+  async function initPushUI() {
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      pushStat("Notifiche non supportate qui. Su iPhone: aggiungi l'app alla schermata Home (iOS 16.4+).");
+      const b = $("pushBtn"); if (b) b.disabled = true; return;
+    }
+    try { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); setPushBtn(!!sub && Notification.permission === "granted"); }
+    catch (e) { setPushBtn(false); }
+  }
+  async function enablePush() {
+    if (!ref) { pushStat("Accedi prima: serve l'account per salvare il promemoria."); return; }
+    if (!window.VAPID_PUBLIC) { pushStat("Manca VAPID_PUBLIC in firebase-config.js."); return; }
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { pushStat("Permesso negato. Attivalo da Impostazioni iPhone > Notifiche."); return; }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(window.VAPID_PUBLIC) });
+      await M.setDoc(ref, { push: JSON.parse(JSON.stringify(sub)), pushAt: M.serverTimestamp() }, { merge: true });
+      setPushBtn(true); pushStat("Promemoria attivi ✓ — riceverai una notifica il lunedi' mattina.");
+    } catch (e) { pushStat("Errore: " + ((e && e.message) || e)); }
+  }
+  async function disablePush() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      if (ref) await M.setDoc(ref, { push: null }, { merge: true });
+      setPushBtn(false); pushStat("Promemoria disattivati.");
+    } catch (e) { pushStat("Errore: " + ((e && e.message) || e)); }
+  }
+  if ($("pushBtn")) $("pushBtn").onclick = () => { $("pushBtn").dataset.on ? disablePush() : enablePush(); };
+
   let unsub = null;
   M.onAuthStateChanged(authClient, async (user) => {
     if (unsub) { unsub(); unsub = null; }
@@ -117,12 +155,14 @@
         $("accountStatus").innerHTML = "Connesso come <b>" + (user.email || "utente") + "</b>. I dati si sincronizzano su tutti i tuoi dispositivi.";
         $("accountBtn").textContent = "Esci";
       }
+      showPush(true); initPushUI();
       // Migrazione: se il documento cloud non esiste, lo creo dai dati locali.
       try { const snap = await M.getDoc(ref); if (!snap.exists()) await M.setDoc(ref, state()); } catch (e) {}
       // Ascolto in tempo reale (ignoro gli echi delle mie stesse scritture).
       unsub = M.onSnapshot(ref, (s) => { if (!s.metadata.hasPendingWrites && s.exists()) applyCloud(s.data()); });
     } else {
       ref = null;
+      showPush(false);
       if (accountCard) {
         $("accountStatus").textContent = "Non connesso: i dati restano solo su questo telefono.";
         $("accountBtn").textContent = "Accedi / Registrati";

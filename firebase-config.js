@@ -28,3 +28,7 @@ window.firebaseConfig = {
 // carica, metti l'ultima versione da:
 // https://firebase.google.com/support/release-notes/js
 window.FIREBASE_VERSION = "10.14.1";
+
+// Chiave PUBBLICA VAPID per le notifiche push (e' pubblica, puo' stare qui).
+// La chiave privata va SOLO nelle Environment Variables di Vercel (VAPID_PRIVATE).
+window.VAPID_PUBLIC = "BK5L8sUNiS7C_xywprsQTCuFgXhc8dFQTuIlue6BSuKcy6TnP38Qnd4mD_dtvdXcKMIB74Ng-MA9SyDsfVa86-Q";

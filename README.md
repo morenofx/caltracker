@@ -17,8 +17,11 @@ caltracker/
 ├── icon-180.png       ← icona schermata Home iPhone
 ├── icon-192.png       ← icona PWA
 ├── icon-512.png       ← icona PWA
+├── package.json       ← dipendenze serverless (firebase-admin, web-push)
+├── vercel.json        ← pianificazione del cron (notifica del lunedi')
 ├── api/
-│   └── analyze.js     ← funzione serverless che parla con Gemini
+│   ├── analyze.js     ← funzione serverless che parla con Gemini
+│   └── notify.js      ← cron: invia la notifica "Pesati!" il lunedi'
 └── README.md
 ```
 
@@ -66,6 +69,30 @@ Note utili:
 - Se lasci `firebase-config.js` vuoto, l'app ignora il cloud e resta in locale (nessun login).
 - Alla prima accesso da un dispositivo che ha già dati in locale, quei dati vengono **caricati nel cloud**; gli altri dispositivi poi li scaricano. Conviene fare il primo login dal telefono che contiene lo storico.
 - In **Dati → Account** vedi lo stato e puoi uscire. C'è anche **"Usa solo su questo telefono"** se non vuoi sincronizzare.
+
+## Notifiche push: promemoria pesata (opzionale)
+
+Manda una notifica di sistema **il lunedi' mattina** ("Pesati!"), anche ad app chiusa. Su iPhone funziona solo con l'app **aggiunta alla schermata Home** (iOS 16.4+) e dopo aver dato il **permesso notifiche**.
+
+Come funziona: un *cron* di Vercel (`vercel.json`) chiama ogni lunedi' `api/notify.js`, che legge le iscrizioni push salvate su Firestore e le invia con la libreria `web-push`. Per leggere Firestore lato server serve una **chiave service account** di Firebase.
+
+Configurazione (una volta sola):
+
+1. **Service account Firebase:** Console Firebase → ingranaggio **Impostazioni progetto** → scheda **Account di servizio** → **Genera nuova chiave privata** → scarica il file JSON.
+   - Convertilo in una riga base64 (piu' comodo da incollare): nel terminale `base64 -i nomefile.json | tr -d '\n'` e copia l'output.
+2. Su **Vercel → Settings → Environment Variables** aggiungi:
+   - `VAPID_PUBLIC` → la chiave pubblica VAPID (la stessa che e' in `firebase-config.js`).
+   - `VAPID_PRIVATE` → la chiave privata VAPID (**segreta**).
+   - `VAPID_SUBJECT` → `mailto:` con la tua email (es. `mailto:tu@gmail.com`).
+   - `FIREBASE_SERVICE_ACCOUNT` → il JSON del service account (la stringa base64 del punto 1, oppure il JSON intero).
+   - `CRON_SECRET` → una stringa casuale a tua scelta (protegge l'endpoint del cron).
+3. **Redeploy.** Avendo aggiunto `package.json`, Vercel installera' `firebase-admin` e `web-push` (la prima volta il deploy ci mette un po' di piu').
+4. Sul telefono: apri l'app **dalla schermata Home**, fai login, poi **Dati → Promemoria pesata → Attiva promemoria** e concedi il permesso.
+
+Note:
+- **Orario:** il cron e' impostato in `vercel.json` (`0 6 * * 1` = lunedi' 06:00 **UTC**, ~08:00 in Italia). L'ora e' in UTC e, sul piano gratuito Vercel, e' **approssimativa** (parte nell'arco dell'ora). Per cambiarla, modifica `schedule`.
+- **Test subito** (senza aspettare lunedi'): chiama l'endpoint a mano con il secret, es. `curl -H "Authorization: Bearer IL_TUO_CRON_SECRET" https://TUO-DOMINIO.vercel.app/api/notify` — deve rispondere `{"ok":true,"sent":1,...}` dopo che hai attivato il promemoria sul telefono.
+- Le chiavi VAPID si generano con `npx web-push generate-vapid-keys`. La privata e il `CRON_SECRET` **non** vanno messi nel codice/repo, solo nelle Environment Variables.
 
 ## Note
 
