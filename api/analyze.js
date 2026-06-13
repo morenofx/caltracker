@@ -20,6 +20,18 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: "Metodo non consentito" });
     return;
   }
+  // Protezione opzionale: se APP_PIN e' impostata su Vercel, ogni richiesta
+  // deve includere lo stesso PIN (header x-app-pin). Cosi' l'endpoint non e'
+  // aperto a chiunque scopra l'URL e non ti consuma credito Gemini.
+  // Se APP_PIN non e' impostata, l'app funziona esattamente come prima.
+  const appPin = process.env.APP_PIN;
+  if (appPin) {
+    const provided = req.headers["x-app-pin"] || (req.body && req.body.pin) || "";
+    if (provided !== appPin) {
+      res.status(401).json({ error: "PIN non valido" });
+      return;
+    }
+  }
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     res.status(500).json({ error: "API key non configurata" });

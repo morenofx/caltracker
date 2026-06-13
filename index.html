@@ -8,6 +8,10 @@
 <meta name="apple-mobile-web-app-title" content="Diario">
 <meta name="theme-color" content="#F0EFEA">
 <title>Il mio diario</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <style>
   :root{
     --bg:#F0EFEA; --card:#FFFFFF; --ink:#1A2230; --muted:#6E7682;
@@ -118,6 +122,20 @@
   #themeBtn{width:34px; height:34px; font-size:15px; background:var(--card); border:none; border-radius:11px; box-shadow:0 1px 2px rgba(0,0,0,.06);}
   #themeBtn:active{opacity:.8;}
   .htop{display:flex; align-items:center; justify-content:space-between;}
+
+  /* prodotti rapidi editabili + modale + accessibilita' */
+  .aibtns button:disabled{opacity:.5;}
+  .sec-row{display:flex; align-items:center; justify-content:space-between;}
+  .linkbtn{background:none; border:none; color:var(--accent); font-size:12px; font-weight:600; text-transform:none; letter-spacing:0; padding:4px 0;}
+  .linkbtn:active{opacity:.6;}
+  .chip.editing{border-style:dashed; border-color:var(--accent);}
+  .chip.addchip{border-style:dashed; color:var(--accent); justify-content:center; align-items:center;}
+  .chip.addchip b{color:var(--accent);}
+  .edit{width:30px; height:30px; border:none; background:var(--soft); color:var(--muted); border-radius:9px; font-size:14px; line-height:1;}
+  .edit:active{background:var(--track); color:var(--accent);}
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:30;}
+  .modal.show{display:flex;}
+  .modal .sheet{background:var(--card); border-radius:var(--radius); padding:18px; width:100%; max-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.25);}
 </style>
 </head>
 <body>
@@ -128,9 +146,9 @@
     <button id="themeBtn" aria-label="Cambia tema">🌙</button>
   </div>
   <div class="datebar" id="datebar">
-    <button class="navbtn" id="prevDay">‹</button>
+    <button class="navbtn" id="prevDay" aria-label="Giorno precedente">‹</button>
     <div class="day" id="dayLabel">Oggi</div>
-    <button class="navbtn" id="nextDay">›</button>
+    <button class="navbtn" id="nextDay" aria-label="Giorno successivo">›</button>
   </div>
 </header>
 
@@ -168,7 +186,7 @@
       <div class="aistat" id="aiStat"></div>
     </div>
 
-    <div class="section-title">Aggiungi al volo</div>
+    <div class="section-title sec-row">Aggiungi al volo <button class="linkbtn" id="editChips">Modifica</button></div>
     <div class="chips" id="quickChips"></div>
 
     <div class="section-title">Aggiungi a mano</div>
@@ -291,19 +309,36 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="modal" id="prodModal">
+  <div class="sheet">
+    <div class="section-title" style="margin-top:0" id="prodTitle">Nuovo prodotto</div>
+    <input id="pName" type="text" placeholder="Nome (es. Banana)" autocomplete="off">
+    <div class="line2" style="margin-top:8px;">
+      <input id="pKcal" type="number" inputmode="numeric" placeholder="kcal">
+      <input id="pProt" type="number" inputmode="numeric" placeholder="proteine g">
+    </div>
+    <button class="btn accent" id="pSave" style="margin-top:12px; width:100%">Salva</button>
+    <button class="btn ghost" id="pDelete" style="margin-top:8px; width:100%; color:var(--over); display:none">Elimina prodotto</button>
+    <button class="btn ghost" id="pCancel" style="margin-top:8px; width:100%">Annulla</button>
+  </div>
+</div>
+
 <script>
 const mem={};
 const store={get(k){try{return localStorage.getItem(k);}catch(e){return (k in mem)?mem[k]:null;}},set(k,v){try{localStorage.setItem(k,v);}catch(e){mem[k]=v;}}};
-const QUICK=[["Frullato sostitutivo",200,30],["3 uova",215,21],["4 uova",290,26],["Yogurt greco 0% 170g",100,18],["Petto di pollo 150g",250,46],["Pesce bianco 200g",180,38],["Salmone 150g",280,31],["Tonno naturale 120g",130,30],["Riso/pasta 80g secco",280,9],["Pane integrale 50g",120,5],["Patate 200g",160,4],["Lenticchie 200g",230,18],["Ricotta magra 100g",140,11],["Fiocchi di latte 100g",100,12],["Mandorle 15g",90,3],["Frutto medio",80,1],["Banana",110,1],["Verdura/insalata",30,2],["Olio 1 cucchiaino",45,0]];
+const DEFAULT_QUICK=[["Frullato sostitutivo",200,30],["3 uova",215,21],["4 uova",290,26],["Yogurt greco 0% 170g",100,18],["Petto di pollo 150g",250,46],["Pesce bianco 200g",180,38],["Salmone 150g",280,31],["Tonno naturale 120g",130,30],["Riso/pasta 80g secco",280,9],["Pane integrale 50g",120,5],["Patate 200g",160,4],["Lenticchie 200g",230,18],["Ricotta magra 100g",140,11],["Fiocchi di latte 100g",100,12],["Mandorle 15g",90,3],["Frutto medio",80,1],["Banana",110,1],["Verdura/insalata",30,2],["Olio 1 cucchiaino",45,0]];
+const seedQuick=()=>DEFAULT_QUICK.map(q=>({name:q[0],kcal:q[1],prot:q[2],uses:0}));
 const DEFAULTS={calTarget:1950,protTarget:135,startW:94,goalW:80,goalDate:"2026-10-03"};
 let settings=JSON.parse(store.get("md_settings")||"null")||{...DEFAULTS};
 let days=JSON.parse(store.get("md_days")||"{}");
 let weights=JSON.parse(store.get("md_weights")||"[]");
+let quick=JSON.parse(store.get("md_quick")||"null");
+if(!Array.isArray(quick)||!quick.length)quick=seedQuick();
 let current=new Date();
 const num=v=>{const n=Number(v);return isFinite(n)?n:0;};
 ["calTarget","protTarget","startW","goalW"].forEach(k=>{if(!isFinite(Number(settings[k]))||Number(settings[k])<=0)settings[k]=DEFAULTS[k];});
 if(!settings.goalDate)settings.goalDate=DEFAULTS.goalDate;
-function save(){store.set("md_settings",JSON.stringify(settings));store.set("md_days",JSON.stringify(days));store.set("md_weights",JSON.stringify(weights));}
+function save(){store.set("md_settings",JSON.stringify(settings));store.set("md_days",JSON.stringify(days));store.set("md_weights",JSON.stringify(weights));store.set("md_quick",JSON.stringify(quick));}
 function key(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayKey(){return key(new Date());}
 let toastT;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("show"),1600);}
@@ -329,18 +364,47 @@ function renderOggi(){
   const box=document.getElementById("entries");box.innerHTML="";
   if(!list.length){box.innerHTML='<div class="empty">Niente registrato.<br>Usa l\'AI, la fotocamera o i pulsanti qui sopra.</div>';return;}
   list.forEach((e,i)=>{const row=document.createElement("div");row.className="entry";
-    row.innerHTML=`<div class="info"><div class="nm">${escapeHtml(e.name)}</div><div class="meta">${e.prot||0} g proteine</div></div><div class="kc mono">${e.kcal}</div><button class="del" data-i="${i}">×</button>`;
+    row.innerHTML=`<div class="info"><div class="nm">${escapeHtml(e.name)}</div><div class="meta">${num(e.prot)} g proteine</div></div><div class="kc mono">${num(e.kcal)}</div><button class="edit" data-i="${i}" aria-label="Modifica">✎</button><button class="del" data-i="${i}" aria-label="Elimina">×</button>`;
     box.appendChild(row);});
-  box.querySelectorAll(".del").forEach(b=>b.onclick=()=>{list.splice(+b.dataset.i,1);save();renderOggi();});
+  box.querySelectorAll(".edit").forEach(b=>b.onclick=()=>startEdit(+b.dataset.i));
+  box.querySelectorAll(".del").forEach(b=>b.onclick=()=>{list.splice(+b.dataset.i,1);cancelEdit();save();renderOggi();});
 }
+let editIdx=-1;
+function startEdit(i){const e=entriesFor()[i];if(!e)return;editIdx=i;
+  document.getElementById("fName").value=e.name;document.getElementById("fKcal").value=num(e.kcal);document.getElementById("fProt").value=num(e.prot);
+  document.getElementById("addCustom").textContent="Salva modifica";
+  const ab=document.getElementById("addbox");ab.classList.remove("flash");void ab.offsetWidth;ab.classList.add("flash");ab.scrollIntoView({behavior:"smooth",block:"center"});}
+function cancelEdit(){editIdx=-1;document.getElementById("addCustom").textContent="Aggiungi";}
+let chipEdit=false;
 function renderChips(){const c=document.getElementById("quickChips");c.innerHTML="";
-  QUICK.forEach(q=>{const b=document.createElement("button");b.className="chip";
-    b.innerHTML=`<b>${q[0]}</b><span>${q[1]} kcal · ${q[2]} g</span>`;
-    b.onclick=()=>{entriesFor().push({name:q[0],kcal:q[1],prot:q[2]});save();renderOggi();toast("Aggiunto");};
-    c.appendChild(b);});}
+  const sorted=[...quick].sort((a,b)=>(b.uses||0)-(a.uses||0));
+  sorted.forEach(q=>{const idx=quick.indexOf(q);const b=document.createElement("button");b.className="chip"+(chipEdit?" editing":"");
+    b.innerHTML=`<b>${escapeHtml(q.name)}</b><span>${num(q.kcal)} kcal · ${num(q.prot)} g${chipEdit?" · ✎":""}</span>`;
+    b.onclick=chipEdit?(()=>openProd(idx)):(()=>{entriesFor().push({name:q.name,kcal:num(q.kcal),prot:num(q.prot)});q.uses=(q.uses||0)+1;save();renderOggi();toast("Aggiunto");});
+    c.appendChild(b);});
+  const add=document.createElement("button");add.className="chip addchip";add.innerHTML="<b>+ Nuovo prodotto</b>";add.onclick=()=>openProd(-1);c.appendChild(add);}
+document.getElementById("editChips").onclick=()=>{chipEdit=!chipEdit;document.getElementById("editChips").textContent=chipEdit?"Fine":"Modifica";renderChips();};
+let prodEditIdx=-1;
+function openProd(idx){prodEditIdx=idx;const isEdit=idx>=0&&idx<quick.length;
+  document.getElementById("prodTitle").textContent=isEdit?"Modifica prodotto":"Nuovo prodotto";
+  document.getElementById("pName").value=isEdit?quick[idx].name:"";
+  document.getElementById("pKcal").value=isEdit?num(quick[idx].kcal):"";
+  document.getElementById("pProt").value=isEdit?num(quick[idx].prot):"";
+  document.getElementById("pDelete").style.display=isEdit?"block":"none";
+  document.getElementById("prodModal").classList.add("show");document.getElementById("pName").focus();}
+function closeProd(){document.getElementById("prodModal").classList.remove("show");}
+document.getElementById("pCancel").onclick=closeProd;
+document.getElementById("prodModal").onclick=(e)=>{if(e.target.id==="prodModal")closeProd();};
+document.getElementById("pSave").onclick=()=>{const n=document.getElementById("pName").value.trim(),k=Math.round(num(document.getElementById("pKcal").value)),p=Math.round(num(document.getElementById("pProt").value));
+  if(!n||k<=0){toast("Serve nome e kcal");return;}
+  if(prodEditIdx>=0&&prodEditIdx<quick.length){quick[prodEditIdx].name=n;quick[prodEditIdx].kcal=k;quick[prodEditIdx].prot=p;}
+  else quick.push({name:n,kcal:k,prot:p,uses:0});
+  save();renderChips();closeProd();toast("Prodotto salvato");};
+document.getElementById("pDelete").onclick=()=>{if(prodEditIdx>=0&&prodEditIdx<quick.length&&confirm("Eliminare questo prodotto rapido?")){quick.splice(prodEditIdx,1);save();renderChips();closeProd();toast("Prodotto eliminato");}};
 
 /* ---- AI ---- */
 function fillForm(d){
+  cancelEdit();
   document.getElementById("fName").value=d.name||"";
   const k=Math.round(num(d.kcal));document.getElementById("fKcal").value=k>0?k:"";
   document.getElementById("fProt").value=Math.round(num(d.protein));
@@ -348,15 +412,28 @@ function fillForm(d){
   ab.scrollIntoView({behavior:"smooth",block:"center"});
 }
 function aiStat(html){document.getElementById("aiStat").innerHTML=html;}
+function sendAI(payload){return fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","x-app-pin":store.get("md_pin")||""},body:JSON.stringify(payload)});}
+let aiBusy=false;
 async function callAI(payload,label){
+  if(aiBusy)return;
+  aiBusy=true;
+  const aiBtns=[document.getElementById("aiTextBtn"),document.getElementById("aiCamBtn")];
+  aiBtns.forEach(b=>b.disabled=true);
   aiStat(`<span class="spin"></span> ${label}…`);
   try{
-    const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    let r=await sendAI(payload);
+    if(r.status===401){
+      const p=prompt("PIN dell'app (impostato su Vercel come APP_PIN):");
+      if(!p){aiStat("Serve il PIN per usare l'AI.");return;}
+      store.set("md_pin",p);r=await sendAI(payload);
+    }
+    if(r.status===401){store.set("md_pin","");aiStat("PIN errato. Tocca di nuovo per reinserirlo.");return;}
     const d=await r.json();
     if(d&&typeof d.kcal!=="undefined"&&!d.error){fillForm(d);aiStat("Stima pronta — controlla e tocca Aggiungi");}
     else if(d.error==="API key non configurata"){aiStat("⚠️ Manca GEMINI_API_KEY su Vercel");}
     else{aiStat("Non sono riuscito a stimare. Riprova o inserisci a mano.");}
   }catch(e){aiStat("Errore di rete. (L'AI funziona solo con l'app pubblicata su Vercel.)");}
+  finally{aiBusy=false;aiBtns.forEach(b=>b.disabled=false);}
 }
 document.getElementById("aiTextBtn").onclick=()=>{const t=document.getElementById("aiText").value.trim();if(!t){aiStat("Scrivi prima cosa hai mangiato.");return;}callAI({text:t},"Sto stimando");};
 document.getElementById("aiCamBtn").onclick=()=>document.getElementById("aiFile").click();
@@ -376,11 +453,14 @@ function resizeImg(file,maxDim=1024,q=0.7){return new Promise((res,rej)=>{const 
 document.getElementById("addCustom").onclick=()=>{
   const n=document.getElementById("fName").value.trim(),k=Math.round(num(document.getElementById("fKcal").value)),p=Math.round(num(document.getElementById("fProt").value));
   if(!n||k<=0){toast("Serve nome e kcal");return;}
-  entriesFor().push({name:n,kcal:k,prot:p});save();renderOggi();
+  const list=entriesFor();
+  if(editIdx>=0&&editIdx<list.length){list[editIdx]={name:n,kcal:k,prot:p};cancelEdit();toast("Modifica salvata");}
+  else{list.push({name:n,kcal:k,prot:p});toast("Aggiunto");}
+  save();renderOggi();
   document.getElementById("fName").value="";document.getElementById("fKcal").value="";document.getElementById("fProt").value="";
-  document.getElementById("aiText").value="";aiStat("");toast("Aggiunto");};
-document.getElementById("prevDay").onclick=()=>{current.setDate(current.getDate()-1);renderOggi();};
-document.getElementById("nextDay").onclick=()=>{current.setDate(current.getDate()+1);renderOggi();};
+  document.getElementById("aiText").value="";aiStat("");};
+document.getElementById("prevDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()-1);renderOggi();};
+document.getElementById("nextDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()+1);renderOggi();};
 
 /* ---- PESO ---- */
 function latestWeight(){if(!weights.length)return settings.startW;return [...weights].sort((a,b)=>a.date<b.date?-1:1).slice(-1)[0].kg;}
@@ -476,12 +556,12 @@ function syncSettingsInputs(){
   document.getElementById("goalDate").value=settings.goalDate||"2026-10-03";
   document.getElementById("pSost").classList.toggle("on",settings.calTarget==1950);
   document.getElementById("pAggr").classList.toggle("on",settings.calTarget==1750);}
-document.querySelectorAll(".preset").forEach(p=>p.onclick=()=>{document.getElementById("calTarget").value=p.dataset.cal;settings.calTarget=+p.dataset.cal;syncSettingsInputs();});
+document.querySelectorAll(".preset[data-cal]").forEach(p=>p.onclick=()=>{document.getElementById("calTarget").value=p.dataset.cal;settings.calTarget=+p.dataset.cal;syncSettingsInputs();});
 document.getElementById("saveSettings").onclick=()=>{settings.calTarget=+document.getElementById("calTarget").value||1950;settings.protTarget=+document.getElementById("protTarget").value||135;settings.startW=+document.getElementById("startW").value||94;settings.goalW=+document.getElementById("goalW").value||80;settings.goalDate=document.getElementById("goalDate").value||"2026-10-03";save();syncSettingsInputs();renderOggi();renderPeso();toast("Impostazioni salvate");};
-document.getElementById("exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({settings,days,weights},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="diario-backup-"+todayKey()+".json";a.click();toast("Backup esportato");};
+document.getElementById("exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({settings,days,weights,quick},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="diario-backup-"+todayKey()+".json";a.click();toast("Backup esportato");};
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
-document.getElementById("importFile").onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.settings)settings=d.settings;if(d.days)days=d.days;if(d.weights)weights=d.weights;save();syncSettingsInputs();renderOggi();renderPeso();toast("Backup importato");}catch(err){toast("File non valido");}};r.readAsText(f);};
-document.getElementById("resetBtn").onclick=()=>{if(confirm("Cancellare tutti i dati? Non si può annullare.")){settings={...DEFAULTS};days={};weights=[];save();syncSettingsInputs();renderOggi();renderPeso();toast("Dati cancellati");}};
+document.getElementById("importFile").onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.settings)settings=d.settings;if(d.days)days=d.days;if(d.weights)weights=d.weights;if(Array.isArray(d.quick)&&d.quick.length)quick=d.quick;save();syncSettingsInputs();renderOggi();renderPeso();renderChips();toast("Backup importato");}catch(err){toast("File non valido");}};r.readAsText(f);};
+document.getElementById("resetBtn").onclick=()=>{if(confirm("Cancellare tutti i dati? Non si può annullare.")){settings={...DEFAULTS};days={};weights=[];quick=seedQuick();save();syncSettingsInputs();renderOggi();renderPeso();renderChips();toast("Dati cancellati");}};
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));t.classList.add("active");document.getElementById("view-"+t.dataset.tab).classList.add("active");document.getElementById("datebar").style.display=t.dataset.tab==="oggi"?"flex":"none";document.querySelector("header h1").textContent={oggi:"Il mio diario",peso:"Peso",storico:"Storico",dati:"Impostazioni"}[t.dataset.tab];if(t.dataset.tab==="storico")renderStorico();});
 
@@ -495,7 +575,14 @@ let theme = store.get("md_theme") || ((window.matchMedia&&matchMedia("(prefers-c
 applyTheme(theme);
 document.getElementById("themeBtn").onclick=()=>{ theme = theme==="dark"?"light":"dark"; store.set("md_theme",theme); applyTheme(theme); };
 
+let shownToday=todayKey();
+function refreshDay(){const t=todayKey();if(t===shownToday)return;const wd=document.getElementById("wDate");if(key(current)===shownToday)current=new Date();if(wd.value===shownToday)wd.value=t;shownToday=t;cancelEdit();renderOggi();renderStorico();}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshDay();});
+window.addEventListener("focus",refreshDay);
+
 renderChips();renderOggi();renderPeso();renderStorico();syncSettingsInputs();
+
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}
 </script>
 </body>
 </html>
