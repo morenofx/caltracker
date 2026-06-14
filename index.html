@@ -96,7 +96,7 @@
   .note{font-size:13px; color:var(--muted); line-height:1.5; margin-top:10px;}
   .note b{color:var(--ink);}
 
-  nav{position:fixed; bottom:0; left:0; right:0; background:rgba(255,255,255,.92); backdrop-filter:saturate(180%) blur(12px); border-top:1px solid var(--line); padding:8px 0 calc(6px + env(safe-area-inset-bottom)); z-index:10;}
+  nav{position:fixed; bottom:0; left:0; right:0; background:rgba(255,255,255,.92); backdrop-filter:saturate(180%) blur(12px); -webkit-backdrop-filter:saturate(180%) blur(12px); border-top:1px solid var(--line); padding:8px 0 calc(6px + env(safe-area-inset-bottom)); z-index:10; transform:translateZ(0); -webkit-transform:translateZ(0); will-change:transform;}
   .tabs{max-width:480px; margin:0 auto; display:flex;}
   .tab{flex:1; background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--muted); font-size:11px; font-weight:600; padding:4px;}
   .tab svg{width:23px; height:23px; stroke:currentColor; fill:none; stroke-width:1.9;}
@@ -288,6 +288,12 @@
       <input id="importFile" type="file" accept="application/json" style="display:none">
       <button class="btn ghost" id="resetBtn" style="margin-top:8px; width:100%; color:var(--over)">Cancella tutti i dati</button>
     </div>
+    <div class="card" id="aiCostCard">
+      <div class="section-title" style="margin-top:0">Consumo AI</div>
+      <div class="note" id="aiCostBody" style="margin-top:0">Nessuna analisi ancora. Il costo di ogni stima AI verrà conteggiato qui.</div>
+      <button class="btn ghost" id="aiCostReset" style="margin-top:12px; width:100%">Azzera contatore</button>
+      <div class="note" style="margin-top:8px; font-size:11px; color:var(--muted)">Stima dai token reali di Gemini (prezzi in USD). La cifra ufficiale resta quella della console Google.</div>
+    </div>
     <div class="card">
       <div class="section-title" style="margin-top:0">Aggiungi alla Home</div>
       <div class="note">Apri questa pagina in <b>Safari</b>, tocca Condividi → <b>"Aggiungi alla schermata Home"</b>. Avrai l'icona come un'app, a tutto schermo.</div>
@@ -383,6 +389,7 @@ if(!Array.isArray(quick))quick=seedQuick();
 let current=new Date();
 const num=v=>{const n=Number(v);return isFinite(n)?n:0;};
 ["calTarget","protTarget","startW","goalW"].forEach(k=>{if(!isFinite(Number(settings[k]))||Number(settings[k])<=0)settings[k]=DEFAULTS[k];});
+if(!settings.ai||typeof settings.ai!=="object")settings.ai={total:0,calls:0,month:"",mTotal:0,mCalls:0};
 if(!settings.goalDate)settings.goalDate=DEFAULTS.goalDate;
 function save(){store.set("md_settings",JSON.stringify(settings));store.set("md_days",JSON.stringify(days));store.set("md_weights",JSON.stringify(weights));store.set("md_quick",JSON.stringify(quick));}
 function key(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -451,6 +458,7 @@ async function runProductAI(payload,label){
     if(r.status===401){const p=prompt("PIN dell'app (impostato su Vercel come APP_PIN):");if(!p){pAiStat("Serve il PIN per l'AI.");return;}store.set("md_pin",p);r=await sendAI(payload);}
     if(r.status===401){store.set("md_pin","");pAiStat("PIN errato. Riprova.");return;}
     const d=await r.json();
+    if(d&&typeof d.cost==="number")addAICost(d.cost);
     if(d&&typeof d.kcal!=="undefined"&&!d.error){
       document.getElementById("pKcal").value=Math.round(num(d.kcal))||"";
       document.getElementById("pProt").value=Math.round(num(d.protein));
@@ -458,6 +466,7 @@ async function runProductAI(payload,label){
       pAiStat("Stima pronta — controlla e salva.");
     }
     else if(d.error==="API key non configurata"){pAiStat("Manca GEMINI_API_KEY su Vercel.");}
+    else if(d.error&&d.error.indexOf("APP_PIN")>=0){pAiStat(d.error);}
     else{pAiStat("Non sono riuscito a stimare. Inseriscile a mano.");}
   }catch(e){pAiStat("Errore di rete. (L'AI funziona solo con l'app online.)");}
   finally{pAiBusy=false;b1.disabled=false;b2.disabled=false;}
@@ -493,6 +502,23 @@ function fillForm(d){
   ab.scrollIntoView({behavior:"smooth",block:"center"});
 }
 function aiStat(html){document.getElementById("aiStat").innerHTML=html;}
+const USD_EUR=0.92; // cambio indicativo USD->EUR, solo per mostrare anche l'euro
+function fmtCost(x){x=x||0;const f=(n)=>n<0.01?n.toFixed(4):n.toFixed(2);return "$"+f(x)+" (≈ €"+f(x*USD_EUR)+")";}
+function addAICost(c){
+  if(typeof c!=="number"||!isFinite(c)||c<=0)return;
+  const m=new Date().toISOString().slice(0,7);
+  if(!settings.ai||typeof settings.ai!=="object")settings.ai={total:0,calls:0,month:m,mTotal:0,mCalls:0};
+  if(settings.ai.month!==m){settings.ai.month=m;settings.ai.mTotal=0;settings.ai.mCalls=0;}
+  settings.ai.total=(settings.ai.total||0)+c;settings.ai.calls=(settings.ai.calls||0)+1;
+  settings.ai.mTotal=(settings.ai.mTotal||0)+c;settings.ai.mCalls=(settings.ai.mCalls||0)+1;
+  save();renderAICost();
+}
+function renderAICost(){
+  const el=document.getElementById("aiCostBody");if(!el)return;
+  const a=settings.ai;
+  if(!a||!a.calls){el.innerHTML="Nessuna analisi ancora. Il costo di ogni stima AI verrà conteggiato qui.";return;}
+  el.innerHTML="Questo mese: <b>"+fmtCost(a.mTotal)+"</b> &middot; "+(a.mCalls||0)+" analisi<br>Totale: <b>"+fmtCost(a.total)+"</b> &middot; "+(a.calls||0)+" analisi";
+}
 function sendAI(payload){return fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json","x-app-pin":store.get("md_pin")||""},body:JSON.stringify(payload)});}
 let aiBusy=false;
 async function callAI(payload,label){
@@ -510,8 +536,10 @@ async function callAI(payload,label){
     }
     if(r.status===401){store.set("md_pin","");aiStat("PIN errato. Tocca di nuovo per reinserirlo.");return;}
     const d=await r.json();
+    if(d&&typeof d.cost==="number")addAICost(d.cost);
     if(d&&typeof d.kcal!=="undefined"&&!d.error){fillForm(d);aiStat("Stima pronta — controlla e tocca Aggiungi");}
     else if(d.error==="API key non configurata"){aiStat("⚠️ Manca GEMINI_API_KEY su Vercel");}
+    else if(d.error&&d.error.indexOf("APP_PIN")>=0){aiStat("⚠️ "+d.error);}
     else{aiStat("Non sono riuscito a stimare. Riprova o inserisci a mano.");}
   }catch(e){aiStat("Errore di rete. (L'AI funziona solo con l'app pubblicata su Vercel.)");}
   finally{aiBusy=false;aiBtns.forEach(b=>b.disabled=false);}
@@ -642,7 +670,8 @@ document.getElementById("saveSettings").onclick=()=>{settings.calTarget=+documen
 document.getElementById("exportBtn").onclick=()=>{const blob=new Blob([JSON.stringify({settings,days,weights,quick},null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="diario-backup-"+todayKey()+".json";a.click();toast("Backup esportato");};
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.settings)settings=d.settings;if(d.days)days=d.days;if(d.weights)weights=d.weights;if(Array.isArray(d.quick))quick=d.quick;save();syncSettingsInputs();renderOggi();renderPeso();renderChips();toast("Backup importato");}catch(err){toast("File non valido");}};r.readAsText(f);};
-document.getElementById("resetBtn").onclick=()=>{if(confirm("Cancellare tutti i dati? Non si può annullare.")){settings={...DEFAULTS};days={};weights=[];quick=seedQuick();save();syncSettingsInputs();renderOggi();renderPeso();renderChips();toast("Dati cancellati");}};
+document.getElementById("resetBtn").onclick=()=>{if(confirm("Cancellare tutti i dati? Non si può annullare.")){settings={...DEFAULTS};days={};weights=[];quick=seedQuick();settings.ai={total:0,calls:0,month:"",mTotal:0,mCalls:0};save();syncSettingsInputs();renderOggi();renderPeso();renderChips();renderAICost();toast("Dati cancellati");}};
+document.getElementById("aiCostReset").onclick=()=>{if(confirm("Azzerare il contatore di spesa AI?")){settings.ai={total:0,calls:0,month:new Date().toISOString().slice(0,7),mTotal:0,mCalls:0};save();renderAICost();toast("Contatore azzerato");}};
 
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));t.classList.add("active");document.getElementById("view-"+t.dataset.tab).classList.add("active");document.getElementById("datebar").style.display=t.dataset.tab==="oggi"?"flex":"none";document.querySelector("header h1").textContent={oggi:"Il mio diario",peso:"Peso",storico:"Storico",dati:"Impostazioni"}[t.dataset.tab];if(t.dataset.tab==="storico")renderStorico();});
 
@@ -661,7 +690,7 @@ function refreshDay(){const t=todayKey();if(t===shownToday)return;const wd=docum
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshDay();});
 window.addEventListener("focus",refreshDay);
 
-renderChips();renderOggi();renderPeso();renderStorico();syncSettingsInputs();
+renderChips();renderOggi();renderPeso();renderStorico();syncSettingsInputs();renderAICost();
 
 if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}
 </script>

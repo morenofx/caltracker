@@ -1,6 +1,10 @@
 // api/analyze.js — proxy sicuro verso Gemini (la chiave resta sul server)
 // Modello verificato a giugno 2026. Puoi cambiarlo qui se ne esce uno nuovo.
 const MODEL = "gemini-2.5-flash";
+// Prezzi Gemini 2.5 Flash (USD per 1M token), verificati giugno 2026.
+// Usati solo per stimare il costo mostrato in app (contatore "Consumo AI").
+const PRICE_IN = 0.30;   // input: testo + immagini
+const PRICE_OUT = 2.50;  // output
 
 const PROMPT = `Sei un nutrizionista esperto. Stima i valori nutrizionali del cibo descritto o mostrato nell'immagine.
 - Se nell'immagine è visibile un'ETICHETTA NUTRIZIONALE, leggi i valori reali da lì per la porzione indicata (o per 100 g se la porzione non è chiara).
@@ -20,17 +24,20 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: "Metodo non consentito" });
     return;
   }
-  // Protezione opzionale: se APP_PIN e' impostata su Vercel, ogni richiesta
-  // deve includere lo stesso PIN (header x-app-pin). Cosi' l'endpoint non e'
-  // aperto a chiunque scopra l'URL e non ti consuma credito Gemini.
-  // Se APP_PIN non e' impostata, l'app funziona esattamente come prima.
+  // Protezione OBBLIGATORIA: l'endpoint risponde solo a chi presenta lo stesso
+  // PIN impostato in APP_PIN su Vercel (header x-app-pin). Cosi' chi scopre
+  // l'URL non puo' consumarti il credito Gemini.
+  // Fail-closed: se APP_PIN non e' configurata l'endpoint NON resta aperto al
+  // mondo, ma rifiuta tutto: una dimenticanza non ti lascia scoperto.
   const appPin = process.env.APP_PIN;
-  if (appPin) {
-    const provided = req.headers["x-app-pin"] || (req.body && req.body.pin) || "";
-    if (provided !== appPin) {
-      res.status(401).json({ error: "PIN non valido" });
-      return;
-    }
+  if (!appPin) {
+    res.status(503).json({ error: "AI non configurata: imposta APP_PIN su Vercel." });
+    return;
+  }
+  const provided = req.headers["x-app-pin"] || (req.body && req.body.pin) || "";
+  if (provided !== appPin) {
+    res.status(401).json({ error: "PIN non valido" });
+    return;
   }
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
@@ -82,24 +89,29 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Costo reale della chiamata dai token effettivi riportati da Gemini.
+    const um = data?.usageMetadata || {};
+    const cost = (um.promptTokenCount || 0) / 1e6 * PRICE_IN + (um.candidatesTokenCount || 0) / 1e6 * PRICE_OUT;
+
     const out = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     let parsed;
     try { parsed = JSON.parse(out); } catch (e) { parsed = null; }
 
     if (!parsed) {
-      res.status(200).json({ error: "Stima non riuscita", raw: out });
+      res.status(200).json({ error: "Stima non riuscita", raw: out, cost: cost });
       return;
     }
     const kcal = toNum(parsed.kcal);
     const protein = toNum(parsed.protein);
     if (kcal <= 0) {
-      res.status(200).json({ error: "Stima non riuscita", raw: out });
+      res.status(200).json({ error: "Stima non riuscita", raw: out, cost: cost });
       return;
     }
     res.status(200).json({
       name: parsed.name || (text || "Pasto"),
       kcal: kcal,
-      protein: protein
+      protein: protein,
+      cost: cost
     });
   } catch (err) {
     res.status(500).json({ error: "Errore interno", detail: String(err) });

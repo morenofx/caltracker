@@ -46,6 +46,7 @@
     _save();
     if (typeof cancelEdit === "function") cancelEdit();
     renderOggi(); renderPeso(); renderStorico(); renderChips(); syncSettingsInputs();
+    if (typeof renderAICost === "function") renderAICost();
   }
 
   // Push verso il cloud, accorpato (debounce) per non scrivere a ogni tasto.
