@@ -34,23 +34,33 @@ module.exports = async (req, res) => {
     const snap = await db.collection("users").get();
     const payload = JSON.stringify({
       title: "Pesati! ⚖️",
-      body: "E' lunedi': registra la pesata della settimana.",
+      body: "E' ora di pesarti: registra la pesata.",
       url: "./"
     });
     let sent = 0, removed = 0;
-    // ?force=1 (con il secret) invia subito ignorando il giorno: utile per i test.
+    // ?force=1 (con il secret) invia subito ignorando giorno/ora: utile per i test.
     const force = !!(req.query && (req.query.force === "1" || req.query.force === 1));
-    // Giorno corrente in Italia (0=domenica .. 6=sabato).
-    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" })).getDay();
+    // "Adesso" in Italia: giorno settimana, minuti dalla mezzanotte, data YYYY-MM-DD.
+    const romeNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" }));
+    const today = romeNow.getDay(); // 0=dom .. 6=sab
+    const nowMin = romeNow.getHours() * 60 + romeNow.getMinutes();
+    const romeDate = romeNow.getFullYear() + "-" + String(romeNow.getMonth() + 1).padStart(2, "0") + "-" + String(romeNow.getDate()).padStart(2, "0");
     for (const doc of snap.docs) {
       const sub = doc.get("push");
       if (!sub || !sub.endpoint) continue;
-      let day = doc.get("pushDay");
-      day = (day === undefined || day === null) ? 1 : Number(day); // default lunedi; -1 = ogni giorno
-      if (!force && day !== -1 && day !== today) continue;
+      if (!force) {
+        let day = doc.get("pushDay");
+        day = (day === undefined || day === null) ? 1 : Number(day); // default lunedi; -1 = ogni giorno
+        if (day !== -1 && day !== today) continue;
+        const t = String(doc.get("pushTime") || "06:00").split(":");
+        const targetMin = (parseInt(t[0], 10) || 0) * 60 + (parseInt(t[1], 10) || 0);
+        if (nowMin < targetMin) continue;                 // non e' ancora l'ora scelta
+        if (doc.get("pushLast") === romeDate) continue;    // gia' inviata oggi
+      }
       try {
         await webpush.sendNotification(sub, payload);
         sent++;
+        if (!force) await doc.ref.update({ pushLast: romeDate });
       } catch (err) {
         // iscrizione scaduta / non valida -> la rimuovo
         if (err && (err.statusCode === 404 || err.statusCode === 410)) {

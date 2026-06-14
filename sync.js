@@ -146,6 +146,8 @@
   if ($("pushBtn")) $("pushBtn").onclick = () => { $("pushBtn").dataset.on ? disablePush() : enablePush(); };
   const pushDaySel = $("pushDay");
   if (pushDaySel) pushDaySel.onchange = () => { if (ref) M.setDoc(ref, { pushDay: parseInt(pushDaySel.value, 10) }, { merge: true }).catch(() => {}); };
+  const pushTimeInp = $("pushTime");
+  if (pushTimeInp) pushTimeInp.onchange = () => { if (ref) M.setDoc(ref, { pushTime: pushTimeInp.value || "06:00" }, { merge: true }).catch(() => {}); };
 
   let unsub = null;
   M.onAuthStateChanged(authClient, async (user) => {
@@ -166,6 +168,7 @@
         const data = s.data();
         applyCloud(data);
         if (pushDaySel && data.pushDay !== undefined && data.pushDay !== null) pushDaySel.value = String(data.pushDay);
+        if (pushTimeInp && data.pushTime) pushTimeInp.value = data.pushTime;
       });
     } else {
       ref = null;
