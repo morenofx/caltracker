@@ -138,6 +138,26 @@
   .modal{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:20px; z-index:30;}
   .modal.show{display:flex;}
   .modal .sheet{background:var(--card); border-radius:var(--radius); padding:18px; width:100%; max-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.25);}
+  #searchModal .sheet{position:relative; max-width:400px;}
+  .sclose{position:absolute; top:8px; right:12px; background:none; border:none; font-size:24px; color:var(--muted); cursor:pointer; line-height:1;}
+  #searchModal input{width:100%; background:var(--soft); border:1px solid var(--track); color:inherit; border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit;}
+  .srow{display:flex; gap:8px; margin:8px 0 10px;}
+  .srow input{flex:1; min-width:0;}
+  .srow .btn{width:auto; padding:0 16px;}
+  .offlist{max-height:44vh; overflow:auto;}
+  .offitem{display:flex; align-items:center; gap:10px; padding:11px 4px; border-top:1px solid var(--track); cursor:pointer;}
+  .offitem .oi{flex:1; min-width:0;}
+  .offitem .on{font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .offitem .ob{font-size:11px; color:var(--muted);}
+  .offitem .ov{font-size:12px; color:var(--accent); font-weight:700; text-align:right; white-space:nowrap;}
+  .scanwrap{display:none; margin:8px 0;}
+  .scanwrap.on{display:block;}
+  .scanwrap video{width:100%; border-radius:12px; background:#000; aspect-ratio:4/3; object-fit:cover;}
+  .gramsbox{margin-top:10px; padding-top:12px; border-top:1px solid var(--track);}
+  .gramsbox .gl{font-size:13px; font-weight:600; margin-bottom:8px;}
+  .gramsbox .gline{display:flex; gap:8px; align-items:center;}
+  .gramsbox input{width:84px; flex:0 0 auto;}
+  .gramsbox .gval{margin-left:auto; font-size:13px; color:var(--accent); font-weight:700; text-align:right;}
 </style>
 </head>
 <body>
@@ -187,6 +207,8 @@
       <input id="aiFile" type="file" accept="image/*" capture="environment" style="display:none">
       <div class="aistat" id="aiStat"></div>
     </div>
+
+    <button class="btn ghost" id="openSearch" style="width:100%; margin-top:10px">🔍 Cerca prodotto confezionato (valori reali)</button>
 
     <div class="section-title sec-row">Aggiungi al volo <button class="linkbtn" id="editChips">Modifica</button></div>
     <div class="chips" id="quickChips"></div>
@@ -355,6 +377,32 @@
     <button class="btn accent" id="pSave" style="margin-top:8px; width:100%">Salva</button>
     <button class="btn ghost" id="pDelete" style="margin-top:8px; width:100%; color:var(--over); display:none">Elimina prodotto</button>
     <button class="btn ghost" id="pCancel" style="margin-top:8px; width:100%">Annulla</button>
+  </div>
+</div>
+
+<div class="modal" id="searchModal">
+  <div class="sheet">
+    <button class="sclose" id="sClose" aria-label="Chiudi">×</button>
+    <div class="section-title" style="margin-top:0">Cerca prodotto</div>
+    <div class="srow">
+      <input id="sInput" type="text" placeholder="Nome prodotto (es. taralli)" autocomplete="off">
+      <button class="btn accent" id="sSearchBtn">Cerca</button>
+    </div>
+    <button class="btn ghost" id="sScanBtn" style="width:100%">📷 Scansiona codice a barre</button>
+    <div class="scanwrap" id="sScan">
+      <video id="sVideo" playsinline muted></video>
+      <button class="btn ghost" id="sStopScan" style="width:100%; margin-top:6px">Ferma scanner</button>
+    </div>
+    <div class="aistat" id="sStat" style="margin-top:8px"></div>
+    <div class="offlist" id="sList"></div>
+    <div class="gramsbox" id="sGrams" style="display:none">
+      <div class="gl" id="sgName"></div>
+      <div class="gline">
+        <input id="sgInput" type="number" inputmode="numeric" value="100"><span style="color:var(--muted); font-size:13px">grammi</span>
+        <span class="gval" id="sgVal"></span>
+      </div>
+      <button class="btn accent" id="sgUse" style="width:100%; margin-top:10px">Aggiungi al diario</button>
+    </div>
   </div>
 </div>
 
@@ -568,6 +616,97 @@ document.getElementById("addCustom").onclick=()=>{
   save();renderOggi();
   document.getElementById("fName").value="";document.getElementById("fKcal").value="";document.getElementById("fProt").value="";
   document.getElementById("aiText").value="";aiStat("");};
+/* ---- Ricerca prodotti (Open Food Facts) — valori reali delle etichette, gratis, niente AI ---- */
+const OFF_BASE="https://world.openfoodfacts.org";
+let sScanControls=null, sChosen=null;
+function sStat(m){document.getElementById("sStat").innerHTML=m||"";}
+function openSearch(){
+  document.getElementById("sList").innerHTML="";
+  document.getElementById("sGrams").style.display="none";
+  sStat(""); stopScan();
+  document.getElementById("sInput").value=document.getElementById("aiText").value.trim();
+  document.getElementById("searchModal").classList.add("show");
+  setTimeout(()=>document.getElementById("sInput").focus(),50);
+}
+function closeSearch(){stopScan();document.getElementById("searchModal").classList.remove("show");}
+function offKcal(n){if(!n)return null;let k=n["energy-kcal_100g"];if(k==null&&n["energy-kcal"]!=null)k=n["energy-kcal"];if(k==null&&n["energy_100g"]!=null)k=n["energy_100g"]/4.184;if(k==null&&n["energy-kj_100g"]!=null)k=n["energy-kj_100g"]/4.184;return(k!=null&&isFinite(k))?Math.round(k):null;}
+function offProt(n){if(!n)return 0;const p=n["proteins_100g"];return(p!=null&&isFinite(p))?Math.round(p*10)/10:0;}
+function offName(p){return((p.product_name_it||p.product_name||"").trim())||"(senza nome)";}
+async function offSearch(term){
+  if(!term)return; sChosen=null; document.getElementById("sGrams").style.display="none";
+  sStat('<span class="spin"></span> Cerco…'); document.getElementById("sList").innerHTML="";
+  try{
+    const u=OFF_BASE+"/cgi/search.pl?search_terms="+encodeURIComponent(term)+"&search_simple=1&action=process&json=1&page_size=20&fields=product_name,product_name_it,brands,nutriments,code";
+    const d=await (await fetch(u)).json();
+    const prods=(d.products||[]).map(p=>({name:offName(p),brand:(p.brands||"").split(",")[0].trim(),kcal:offKcal(p.nutriments),prot:offProt(p.nutriments)})).filter(p=>p.kcal!=null&&p.kcal>0);
+    if(!prods.length){sStat("Nessun prodotto con valori nutrizionali. Prova un altro nome o inseriscilo a mano.");return;}
+    sStat(""); renderResults(prods);
+  }catch(e){sStat("Errore di rete nella ricerca.");}
+}
+async function offBarcode(code){
+  sStat('<span class="spin"></span> Leggo il prodotto…'); document.getElementById("sList").innerHTML="";
+  try{
+    const u=OFF_BASE+"/api/v2/product/"+encodeURIComponent(code)+".json?fields=product_name,product_name_it,brands,nutriments,code";
+    const d=await (await fetch(u)).json();
+    if(d.status!==1||!d.product){sStat("Codice "+escapeHtml(code)+" non trovato. Prova la ricerca per nome.");return;}
+    const p=d.product, kc=offKcal(p.nutriments);
+    if(kc==null){sStat("Prodotto trovato ma senza valori nutrizionali. Inseriscilo a mano.");return;}
+    sStat(""); renderResults([{name:offName(p),brand:(p.brands||"").split(",")[0].trim(),kcal:kc,prot:offProt(p.nutriments)}]);
+  }catch(e){sStat("Errore di rete nel leggere il codice.");}
+}
+function renderResults(list){
+  const box=document.getElementById("sList"); box.innerHTML="";
+  list.forEach(p=>{
+    const it=document.createElement("div"); it.className="offitem";
+    it.innerHTML='<div class="oi"><div class="on">'+escapeHtml(p.name)+'</div><div class="ob">'+escapeHtml(p.brand||"")+'</div></div><div class="ov">'+p.kcal+' kcal · '+p.prot+' g<br><span style="color:var(--muted);font-weight:400">per 100 g</span></div>';
+    it.onclick=()=>chooseProduct(p);
+    box.appendChild(it);
+  });
+}
+function chooseProduct(p){
+  sChosen=p; document.getElementById("sList").innerHTML=""; sStat("");
+  document.getElementById("sGrams").style.display="block";
+  document.getElementById("sgName").textContent=p.name+(p.brand?" · "+p.brand:"");
+  document.getElementById("sgInput").value=100; updateGval();
+  document.getElementById("sgInput").focus();
+}
+function updateGval(){
+  if(!sChosen)return;
+  const g=Math.max(0,num(document.getElementById("sgInput").value));
+  document.getElementById("sgVal").textContent=Math.round(sChosen.kcal*g/100)+" kcal · "+(Math.round(sChosen.prot*g/100*10)/10)+" g prot.";
+}
+function useChosen(){
+  if(!sChosen)return;
+  const g=Math.max(1,Math.round(num(document.getElementById("sgInput").value)));
+  fillForm({name:sChosen.name+" ("+g+" g)",kcal:Math.round(sChosen.kcal*g/100),protein:Math.round(sChosen.prot*g/100)});
+  closeSearch(); toast("Pronto: controlla e tocca Aggiungi");
+}
+async function startScan(){
+  const wrap=document.getElementById("sScan"); wrap.classList.add("on");
+  sStat('<span class="spin"></span> Avvio fotocamera…');
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){sStat("Fotocamera non disponibile qui.");wrap.classList.remove("on");return;}
+    const ZX=await import("https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm");
+    const reader=new ZX.BrowserMultiFormatReader();
+    sStat("Inquadra il codice a barre del prodotto.");
+    sScanControls=await reader.decodeFromConstraints({video:{facingMode:"environment"}},document.getElementById("sVideo"),(result,err,controls)=>{
+      if(result){const code=result.getText();try{controls.stop();}catch(e){} sScanControls=null; document.getElementById("sScan").classList.remove("on"); offBarcode(code);}
+    });
+  }catch(e){
+    sStat("Scanner non disponibile qui — usa la ricerca per nome.");
+    document.getElementById("sScan").classList.remove("on");
+  }
+}
+function stopScan(){try{if(sScanControls){sScanControls.stop();sScanControls=null;}}catch(e){} const w=document.getElementById("sScan"); if(w)w.classList.remove("on");}
+document.getElementById("openSearch").onclick=openSearch;
+document.getElementById("sClose").onclick=closeSearch;
+document.getElementById("searchModal").onclick=(e)=>{if(e.target.id==="searchModal")closeSearch();};
+document.getElementById("sSearchBtn").onclick=()=>offSearch(document.getElementById("sInput").value.trim());
+document.getElementById("sInput").onkeydown=(e)=>{if(e.key==="Enter")offSearch(document.getElementById("sInput").value.trim());};
+document.getElementById("sScanBtn").onclick=startScan;
+document.getElementById("sStopScan").onclick=stopScan;
+document.getElementById("sgInput").oninput=updateGval;
+document.getElementById("sgUse").onclick=useChosen;
 document.getElementById("prevDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()-1);renderOggi();};
 document.getElementById("nextDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()+1);renderOggi();};
 
