@@ -401,6 +401,11 @@
         <input id="sgInput" type="number" inputmode="numeric" value="100"><span style="color:var(--muted); font-size:13px">grammi</span>
         <span class="gval" id="sgVal"></span>
       </div>
+      <div class="srow" style="margin:10px 0 0">
+        <input id="sgDesc" type="text" placeholder="oppure scrivi la quantità (es. 10 mandorle)" autocomplete="off">
+        <button class="btn ghost" id="sgEstimate">Stima g</button>
+      </div>
+      <div class="aistat" id="sgStat" style="margin-top:6px"></div>
       <button class="btn accent" id="sgUse" style="width:100%; margin-top:10px">Aggiungi al diario</button>
     </div>
   </div>
@@ -668,6 +673,7 @@ function chooseProduct(p){
   document.getElementById("sGrams").style.display="block";
   document.getElementById("sgName").textContent=p.name+(p.brand?" · "+p.brand:"");
   document.getElementById("sgInput").value=100; updateGval();
+  document.getElementById("sgDesc").value=""; document.getElementById("sgStat").innerHTML="";
   document.getElementById("sgInput").focus();
 }
 function updateGval(){
@@ -707,6 +713,23 @@ document.getElementById("sScanBtn").onclick=startScan;
 document.getElementById("sStopScan").onclick=stopScan;
 document.getElementById("sgInput").oninput=updateGval;
 document.getElementById("sgUse").onclick=useChosen;
+async function estimateGrams(){
+  const t=document.getElementById("sgDesc").value.trim(); if(!t)return;
+  const st=document.getElementById("sgStat");
+  st.innerHTML='<span class="spin"></span> Stimo il peso con l\'AI…';
+  try{
+    let r=await sendAI({weigh:t});
+    if(r.status===401){const p=prompt("PIN dell'app (impostato su Vercel come APP_PIN):");if(!p){st.textContent="Serve il PIN per la stima.";return;}store.set("md_pin",p);r=await sendAI({weigh:t});}
+    if(r.status===401){store.set("md_pin","");st.textContent="PIN errato. Riprova.";return;}
+    const d=await r.json();
+    if(d&&typeof d.cost==="number")addAICost(d.cost);
+    if(d&&typeof d.grams!=="undefined"&&d.grams>0){document.getElementById("sgInput").value=Math.round(d.grams);updateGval();st.textContent="Peso stimato: "+Math.round(d.grams)+" g — controlla e tocca Aggiungi.";}
+    else if(d&&d.error&&d.error.indexOf("APP_PIN")>=0){st.textContent="⚠️ "+d.error;}
+    else{st.textContent="Non sono riuscito a stimare il peso. Mettilo a mano in grammi.";}
+  }catch(e){st.textContent="Errore di rete. (La stima AI funziona solo con l'app su Vercel.)";}
+}
+document.getElementById("sgEstimate").onclick=estimateGrams;
+document.getElementById("sgDesc").onkeydown=(e)=>{if(e.key==="Enter"){e.preventDefault();estimateGrams();}};
 document.getElementById("prevDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()-1);renderOggi();};
 document.getElementById("nextDay").onclick=()=>{cancelEdit();current.setDate(current.getDate()+1);renderOggi();};
 

@@ -46,7 +46,34 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { text, image, mimeType } = req.body || {};
+    const { text, image, mimeType, weigh } = req.body || {};
+
+    // Stima del solo PESO in grammi di una quantita' descritta a parole
+    // (es. "10 mandorle"): serve per calcolare la porzione reale su un prodotto
+    // di cui conosciamo gia' i valori per 100 g (ricerca o codice a barre).
+    if (weigh) {
+      const wbody = {
+        contents: [{ role: "user", parts: [{ text: "Stima il peso totale commestibile, in grammi, della porzione descritta, ragionando sul peso tipico di ogni pezzo o unita'. Rispondi SOLO con il JSON richiesto. Porzione: " + String(weigh).slice(0, 200) }] }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+          responseSchema: { type: "OBJECT", properties: { grams: { type: "NUMBER" } }, required: ["grams"] }
+        }
+      };
+      const wr = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(wbody) }
+      );
+      const wd = await wr.json();
+      if (!wr.ok) { res.status(502).json({ error: "Errore Gemini", detail: wd?.error?.message || "" }); return; }
+      const wout = wd?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      let wp; try { wp = JSON.parse(wout); } catch (e) { wp = null; }
+      const wum = wd?.usageMetadata || {};
+      const wcost = (wum.promptTokenCount || 0) / 1e6 * PRICE_IN + (wum.candidatesTokenCount || 0) / 1e6 * PRICE_OUT;
+      res.status(200).json({ grams: wp ? toNum(wp.grams) : 0, cost: wcost });
+      return;
+    }
+
     if (!text && !image) {
       res.status(400).json({ error: "Niente da analizzare" });
       return;
